@@ -1,0 +1,19 @@
+services:
+  development:
+    build:
+      context: .
+      target: development
+    volumes:
+      - .:/app
+    environment:
+      - ENV=development
+    profiles:
+      - development
+  production:
+    build:
+      context: .
+      target: production
+    environment:
+      - ENV=production
+    profiles:
+      - production

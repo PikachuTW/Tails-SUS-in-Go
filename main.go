@@ -73,7 +73,9 @@ func messageCreate(bot *discordgo.Session, message *discordgo.MessageCreate) {
 
 	args := strings.Fields(message.Content)
 	command := strings.ToLower(args[0])
-	command = command[len(prefix):]
+	if len(command) >= len(prefix) {
+		command = command[len(prefix):]
+	}
 
 	if command == "ping" {
 		replyContent := "機器人延遲: " + strconv.FormatInt(bot.HeartbeatLatency().Milliseconds(), 10) + "ms"
@@ -86,7 +88,24 @@ func messageCreate(bot *discordgo.Session, message *discordgo.MessageCreate) {
 		if len(args) <= 2 {
 			return
 		}
-		var target = message.Mentions[0]
+
+		var target *discordgo.User
+		if len(message.Mentions) >= 1 {
+			target = message.Mentions[0]
+		} else {
+			target, err = bot.User(args[1])
+			if err != nil {
+				log.Printf("Error getting target user: %v", err)
+			}
+		}
+		var userName string
+		var avatarURL string
+		if target == nil {
+			userName = args[1]
+		} else {
+			userName = target.Username
+			avatarURL = target.AvatarURL("")
+		}
 		var content = strings.Join(args[2:], " ")
 		webhooks, _ := bot.ChannelWebhooks(message.ChannelID)
 		var webhook *discordgo.Webhook
@@ -109,8 +128,8 @@ func messageCreate(bot *discordgo.Session, message *discordgo.MessageCreate) {
 		}
 		_, err := bot.WebhookExecute(webhook.ID, webhook.Token, true, &discordgo.WebhookParams{
 			Content:   content,
-			Username:  target.Username,
-			AvatarURL: target.AvatarURL("4096"),
+			Username:  userName,
+			AvatarURL: avatarURL,
 			AllowedMentions: &discordgo.MessageAllowedMentions{
 				Parse: []discordgo.AllowedMentionType{discordgo.AllowedMentionTypeUsers},
 			},
