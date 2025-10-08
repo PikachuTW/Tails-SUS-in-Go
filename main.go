@@ -13,36 +13,40 @@ import (
 )
 
 func main() {
-	enverr := godotenv.Load()
+	if env := os.Getenv("ENV"); env != "production" {
+		if err := godotenv.Load(); err != nil {
+			log.Fatalf("Error loading .env file: %v", err)
+		}
+	}
 	var token = os.Getenv("DISCORD_TOKEN")
-	if enverr != nil || token == "" {
-		log.Fatal("failed to load env\n", enverr)
+	if token == "" {
+		log.Fatal("DISCORD_TOKEN is not in env")
 	}
 
-	discord, discorderr := discordgo.New("Bot " + token)
-	if discorderr != nil {
-		log.Fatal("error create discord client\n", discorderr)
+	discord, err := discordgo.New("Bot " + token)
+	if err != nil {
+		log.Fatalf("error create discord client: %v", err)
 	}
 
-	discord.Identify.Intents = discordgo.IntentsAll
-	discord.State.TrackMembers = true
-	discord.State.TrackChannels = true
-	discord.State.TrackRoles = true
+	discord.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsGuildWebhooks
 
 	discord.AddHandler(messageCreate)
 	discord.AddHandler(OnReady)
 
-	discordsocketerr := discord.Open()
-	if discordsocketerr != nil {
-		log.Fatal("error opening socket connection\n", discordsocketerr)
+	if err := discord.Open(); err != nil {
+		log.Fatalf("error opening socket connection: %v", err)
 	}
 
 	log.Println("bot running")
+
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
 
-	discord.Close()
+	err = discord.Close()
+	if err != nil {
+		log.Fatalf("error closing discord: %v", err)
+	}
 }
 
 func OnReady(bot *discordgo.Session, ready *discordgo.Ready) {
@@ -54,7 +58,7 @@ func messageCreate(bot *discordgo.Session, message *discordgo.MessageCreate) {
 		return
 	}
 
-	if message.Content == "" || strings.ToLower(message.Content[:4]) != "sgo?" {
+	if message.Content == "" || strings.ToLower(message.Content[:4]) != "s?" {
 		return
 	}
 
@@ -66,34 +70,39 @@ func messageCreate(bot *discordgo.Session, message *discordgo.MessageCreate) {
 	args := strings.Fields(message.Content)
 	command := strings.ToLower(args[0])
 
-	if command == "sgo?ping" {
-		var replyContent string = "機器人延遲: " + strconv.FormatInt(bot.HeartbeatLatency().Milliseconds(), 10) + "ms"
-		bot.ChannelMessageSend(message.ChannelID, replyContent)
-	} else if command == "sgo?s" || command == "sgo?say" {
+	if command == "s?ping" {
+		replyContent := "機器人延遲: " + strconv.FormatInt(bot.HeartbeatLatency().Milliseconds(), 10) + "ms"
+		_, err := bot.ChannelMessageSend(message.ChannelID, replyContent)
+		if err != nil {
+			log.Printf("Error sending message: %v", err)
+			return
+		}
+	} else if command == "s?s" || command == "s?say" {
 		if len(args) <= 2 {
 			return
 		}
 		var target = message.Mentions[0]
 		var content = strings.Join(args[2:], " ")
 		webhooks, _ := bot.ChannelWebhooks(message.ChannelID)
-		var foundwebhook bool = false
 		var webhook *discordgo.Webhook
 		for i := 0; i < len(webhooks); i++ {
 			if webhooks[i].User.ID == bot.State.User.ID {
-				foundwebhook = true
 				webhook = webhooks[i]
 				break
 			}
 		}
-		if !foundwebhook {
+		if webhook == nil {
 			if len(webhooks) >= 10 {
-				bot.ChannelMessageSend(message.ChannelID, "此頻道的Webhooks已經滿了，無法再創建，請刪除一些")
+				_, err := bot.ChannelMessageSend(message.ChannelID, "此頻道的Webhooks已經滿了，無法再創建，請刪除一些")
+				if err != nil {
+					log.Print("Error sending message: ", err)
+				}
 				return
 			}
-			newwebhook, _ := bot.WebhookCreate(message.ChannelID, "Tails SUS Golang", "")
-			webhook = newwebhook
+			newWebhook, _ := bot.WebhookCreate(message.ChannelID, "Tails SUS Golang", "")
+			webhook = newWebhook
 		}
-		bot.WebhookExecute(webhook.ID, webhook.Token, true, &discordgo.WebhookParams{
+		_, err := bot.WebhookExecute(webhook.ID, webhook.Token, true, &discordgo.WebhookParams{
 			Content:   content,
 			Username:  target.Username,
 			AvatarURL: target.AvatarURL("4096"),
@@ -101,5 +110,9 @@ func messageCreate(bot *discordgo.Session, message *discordgo.MessageCreate) {
 				Parse: []discordgo.AllowedMentionType{discordgo.AllowedMentionTypeUsers},
 			},
 		})
+		if err != nil {
+			log.Printf("Error sending webhook: %v", err)
+			return
+		}
 	}
 }
