@@ -12,6 +12,10 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const (
+	prefix = "s?"
+)
+
 func main() {
 	if env := os.Getenv("ENV"); env != "production" {
 		if err := godotenv.Load(); err != nil {
@@ -58,26 +62,27 @@ func messageCreate(bot *discordgo.Session, message *discordgo.MessageCreate) {
 		return
 	}
 
-	if message.Content == "" || strings.ToLower(message.Content[:4]) != "s?" {
+	if message.Content == "" || !strings.HasPrefix(strings.ToLower(message.Content), "s?") {
 		return
 	}
 
 	var err = bot.ChannelMessageDelete(message.ChannelID, message.ID)
 	if err != nil {
-		log.Println("Error Deleteing message: ", err)
+		log.Println("Error deleting message: ", err)
 	}
 
 	args := strings.Fields(message.Content)
 	command := strings.ToLower(args[0])
+	command = command[len(prefix):]
 
-	if command == "s?ping" {
+	if command == "ping" {
 		replyContent := "機器人延遲: " + strconv.FormatInt(bot.HeartbeatLatency().Milliseconds(), 10) + "ms"
 		_, err := bot.ChannelMessageSend(message.ChannelID, replyContent)
 		if err != nil {
 			log.Printf("Error sending message: %v", err)
 			return
 		}
-	} else if command == "s?s" || command == "s?say" {
+	} else if command == "s" || command == "say" {
 		if len(args) <= 2 {
 			return
 		}
